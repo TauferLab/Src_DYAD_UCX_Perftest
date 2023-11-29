@@ -1,0 +1,20 @@
+# This is a Spack Environment file.
+#
+# It describes a set of packages to be installed, along with
+# configuration settings.
+spack:
+  # add package specs to the `specs` list
+  specs:
+  - caliper+adiak
+  - adiak
+  - ucx@1.13.0
+  - 'cmake@3.16:'
+  - libzmq
+  view: true
+  concretizer:
+    unify: true
+  # Specify allowed MPI providers due to a bug when using cray-mpich
+  packages:
+    all:
+      providers:
+        mpi: [mpich, mvapich2, openmpi]
