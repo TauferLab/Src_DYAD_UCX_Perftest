@@ -1,4 +1,5 @@
-spack_env/
+!spack_env
+spack_env/*
 !spack_env/spack.yaml
 build/
 test_install/
