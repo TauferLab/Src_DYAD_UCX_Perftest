@@ -2,12 +2,16 @@
 
 #include "utils.h"
 
+#include <caliper/cali.h>
+#include <caliper/Annotation.h>
+
 #include <sstream>
 #include <stdexcept>
 
 OOBComm::OOBComm (Mode mode, const std::string& tcp_addr_and_port) : m_mode (mode)
 {
     DYAD_PERFTEST_INFO ("Starting OOB communication on {}", tcp_addr_and_port);
+    cali::Function oob_init_region ("OOBComm::init_zmq");
     std::string full_addr = fmt::format ("tcp://{}", tcp_addr_and_port);
     auto port_sep_idx = tcp_addr_and_port.find_last_of (':');
     if (port_sep_idx == std::string::npos) {
@@ -38,6 +42,7 @@ OOBComm::~OOBComm ()
 void OOBComm::send (const nlohmann::json& msg)
 {
     DYAD_PERFTEST_INFO ("Sending OOB message", "");
+    cali::Function oob_send_region ("OOBComm::send");
     std::ostringstream ss;
     ss << msg;
     std::string serialized_msg = ss.str ();
@@ -47,6 +52,7 @@ void OOBComm::send (const nlohmann::json& msg)
 nlohmann::json OOBComm::recv ()
 {
     DYAD_PERFTEST_INFO ("Receiving OOB message", "");
+    cali::Function oob_recv_region ("OOBComm::recv");
     std::string serializecd_msg = zstr_recv (m_sock);
     std::istringstream ss (serializecd_msg);
     nlohmann::json msg;
@@ -56,6 +62,7 @@ nlohmann::json OOBComm::recv ()
 
 void OOBComm::shutdown ()
 {
+    cali::Function oob_shutdown_region ("OOBComm::shutdown");
     if (m_open) {
         zsock_destroy (&m_sock);
         m_sock = nullptr;

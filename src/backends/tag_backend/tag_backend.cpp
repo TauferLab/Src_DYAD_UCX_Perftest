@@ -6,6 +6,7 @@
 #include <unistd.h>
 
 #include <caliper/cali.h>
+#include <caliper/Annotation.h>
 
 #include "utils.h"
 
@@ -36,7 +37,7 @@ TagBackend::TagBackend (AbstractBackend::CommMode mode) : AbstractBackend (mode)
 void TagBackend::establish_connection ()
 {
     DYAD_PERFTEST_INFO ("Establishing connection with other UCX endpoint\n", "");
-    CALI_CXX_MARK_FUNCTION;
+    cali::Function establish_connection_region("TagBackend::establish_connection");
     ucp_ep_params_t params;
     ucs_status_t status = UCS_OK;
     if (m_mode == SEND) {
@@ -65,7 +66,7 @@ void TagBackend::establish_connection ()
 void TagBackend::send (void *buf, size_t buflen)
 {
     DYAD_PERFTEST_INFO ("Sending {} bytes of data using UCX Tag Send\n", buflen);
-    CALI_CXX_MARK_FUNCTION;
+    cali::Function send_region("TagBackend::send");
     ucs_status_ptr_t stat_ptr;
     ucs_status_t status = UCS_OK;
     ucx_request_t *req = nullptr;
@@ -88,7 +89,7 @@ void TagBackend::send (void *buf, size_t buflen)
 void TagBackend::recv (void **buf, size_t *buflen)
 {
     DYAD_PERFTEST_INFO ("Receiving data using UCX Tag Recv", "");
-    CALI_CXX_MARK_FUNCTION;
+    cali::Function send_region("TagBackend::recv");
     ucs_status_t status = UCS_OK;
     ucp_tag_message_h msg = NULL;
     ucp_tag_recv_info_t msg_info;
@@ -96,6 +97,7 @@ void TagBackend::recv (void **buf, size_t *buflen)
     if (!m_tag) {
         throw std::runtime_error ("Tag not set prior to invoking recv!");
     }
+    CALI_MARK_BEGIN ("ucp_tag_probe");
     do {
         ucp_worker_progress (m_worker);
         msg = ucp_tag_probe_nb (m_worker,
@@ -107,17 +109,22 @@ void TagBackend::recv (void **buf, size_t *buflen)
                                 &msg_info);
         usleep (10);
     } while (msg == nullptr);
+    CALI_MARK_END ("ucp_tag_probe");
+    CALI_MARK_BEGIN ("recv_buffer_alloc");
     *buflen = msg_info.length;
     *buf = malloc (*buflen);
+    CALI_MARK_END ("recv_buffer_alloc");
     if (*buf == nullptr) {
         throw std::runtime_error ("Could not allocate memory for buffer");
     }
+    CALI_MARK_BEGIN ("ucp_tag_msg_recv");
     ucp_request_param_t recv_params;
     recv_params.op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK | UCP_OP_ATTR_FIELD_MEMORY_TYPE;
     recv_params.cb.recv = recv_callback;
     recv_params.memory_type = UCS_MEMORY_TYPE_HOST;
     stat_ptr = ucp_tag_msg_recv_nbx (m_worker, *buf, *buflen, msg, &recv_params);
     status = ucx_request_wait (m_worker, (ucx_request_t*) stat_ptr);
+    CALI_MARK_END ("ucp_tag_msg_recv");
     if (UCX_STATUS_FAIL (status)) {
         free (*buf);
         *buf = NULL;
@@ -129,7 +136,7 @@ void TagBackend::recv (void **buf, size_t *buflen)
 void TagBackend::close_connection ()
 {
     DYAD_PERFTEST_INFO ("Closing UCX connection", "");
-    CALI_CXX_MARK_FUNCTION;
+    cali::Function close_connection_region("TagBackend::close_connection");
     ucs_status_t status = UCS_OK;
     ucs_status_ptr_t stat_ptr;
     if (m_mode == SEND) {

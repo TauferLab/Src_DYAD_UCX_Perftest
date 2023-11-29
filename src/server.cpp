@@ -2,7 +2,12 @@
 
 #include "base64.h"
 
+#include <caliper/cali.h>
+#include <caliper/Annotation.h>
+
 #include <fcntl.h>
+
+#include "utils.h"
 
 extern const base64_maps_t base64_maps_rfc4648;
 
@@ -24,6 +29,7 @@ Server::~Server ()
 
 void Server::gen_data ()
 {
+    cali::Function server_gen_data_region ("Server::gen_data");
     m_data_buf = malloc (m_data_size);
     int fd = open ("/dev/urandom", O_RDONLY);
     read (fd, m_data_buf, m_data_size);
@@ -32,6 +38,7 @@ void Server::gen_data ()
 
 void Server::start ()
 {
+    cali::Function server_start_region ("Server::start");
     nlohmann::json msg = m_oob_comm->recv ();
     int msg_type = msg.at ("msg_type").get<int> ();
     if (msg_type != 0)
@@ -43,18 +50,30 @@ void Server::start ()
 
 void Server::run ()
 {
+    cali::Function server_run_region ("Server::run");
     int msg_type = 0;
+    int loop_id = 0;
+    CALI_CXX_MARK_LOOP_BEGIN (server_run_loop_id, "server_run_loop");
     do {
+        CALI_CXX_MARK_LOOP_ITERATION (server_run_loop_id, loop_id);
         nlohmann::json msg = m_oob_comm->recv ();
-        int msg_type = msg.at ("msg_type").get<int> ();
+        msg_type = msg.at ("msg_type").get<int> ();
+        DYAD_PERFTEST_INFO ("Message type is {}", msg_type);
         if (msg_type == 1) {
             std::optional<ucp_tag_t> tag = msg.at ("tag").get<ucp_tag_t> ();
+            DYAD_PERFTEST_INFO ("Tag is {}", *tag);
             if (*tag == 0)
                 tag = std::nullopt;
             auto addr_element = msg.at ("addr");
-            nlohmann::json::binary_t serialized_addr = addr_element.get<nlohmann::json::binary_t> ();
+            // nlohmann::json::array_t serialized_addr = addr_element.at("bytes").get<nlohmann::json::array_t> ();
+            std::string serialized_addr = addr_element.get<std::string> ();
             void* enc_addr = (void*)serialized_addr.data ();
             size_t enc_addr_size = msg.at ("addr_size").get<size_t> ();
+            printf("Encoded addr is:\n");
+            for (size_t si = 0; si < enc_addr_size+1; si++) {
+                printf ("%02x", ((uint8_t*)enc_addr)[si]);
+            }
+            printf("\n");
             size_t addr_size = base64_decoded_length (enc_addr_size);
             ucp_address_t* addr = (ucp_address_t*)malloc (addr_size);
             if (addr == nullptr)
@@ -77,11 +96,15 @@ void Server::run ()
             resp["iter_ok"] = true;
             m_oob_comm->send (resp);
         }
+        loop_id += 1;
     } while (msg_type != 2);
+    CALI_CXX_MARK_LOOP_END (server_run_loop_id);
+    DYAD_PERFTEST_INFO ("Server is done running", "");
 }
 
 void Server::shutdown ()
 {
+    cali::Function server_shutdown_region ("Server::shutdown");
     m_oob_comm->shutdown ();
     m_backend->shutdown ();
 }

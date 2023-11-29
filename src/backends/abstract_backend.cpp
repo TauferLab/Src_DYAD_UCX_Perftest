@@ -2,6 +2,9 @@
 
 #include <fmt/format.h>
 
+#include <caliper/cali.h>
+#include <caliper/Annotation.h>
+
 extern "C" {
     void ucx_request_init (void *request)
     {
@@ -12,6 +15,7 @@ extern "C" {
     
     ucs_status_t ucx_request_wait (ucp_worker_h worker, ucx_request_t *request)
     {
+        CALI_MARK_BEGIN ("ucx_request_wait");
         ucs_status_t final_request_status = UCS_OK;
         if (UCS_PTR_IS_PTR (request)) {
             do {
@@ -29,6 +33,7 @@ extern "C" {
         }
         final_request_status = UCS_OK;
 dtl_ucx_request_wait_region_finish:
+        CALI_MARK_END ("ucx_request_wait");
         return final_request_status;
     }
 }
@@ -49,6 +54,7 @@ AbstractBackend::AbstractBackend (AbstractBackend::CommMode mode)
 
 void AbstractBackend::init ()
 {
+    cali::Function ucx_init ("Backend::init");
     ucp_params_t ucx_params;
     ucp_worker_params_t worker_params;
     ucp_config_t *config;
@@ -129,6 +135,7 @@ void AbstractBackend::set_tag (std::optional<ucp_tag_t> tag)
 
 void AbstractBackend::shutdown ()
 {
+    cali::Function shutdown_ucx_region ("Backend::shutdown");
     if (m_initialized) {
         if (m_remote_ep != nullptr) {
             close_connection ();

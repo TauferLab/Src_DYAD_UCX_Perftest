@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <cctype>
 
+#include <caliper/cali.h>
+
 #include "client.hpp"
 #include "server.hpp"
 #include "tag_backend.hpp"
@@ -75,6 +77,7 @@ int client_main (const Mode& mode,
 
 int main (int argc, char** argv)
 {
+    CALI_CXX_MARK_FUNCTION;
     // std::string mode;
     std::string tcp_addr;
     size_t data_size;

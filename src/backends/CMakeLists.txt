@@ -9,7 +9,6 @@ set(backend_headers
 set(backend_inc_dirs
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/tag_backend
-    ${CMAKE_PROJECT_DIR}/src
 )
 
 add_library(backends STATIC ${backend_src} ${backend_headers})
