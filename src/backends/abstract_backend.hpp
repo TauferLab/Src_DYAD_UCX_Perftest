@@ -15,6 +15,8 @@
 // of UCX operations
 #define UCX_STATUS_FAIL(status) (status != UCS_OK)
 
+#define MAX_BUFFER_SIZE (32 * 1024 * 1024)
+
 extern "C" {
 struct ucx_request {
     int completed;
@@ -59,27 +61,33 @@ class AbstractBackend
         NONE,
     };
 
-    AbstractBackend (CommMode mode);
+    AbstractBackend (CommMode mode, size_t data_size);
 
     virtual ~AbstractBackend ();
-    
+
     void init ();
 
     std::tuple<ucp_address_t *, size_t> get_address () const;
 
     std::optional<ucp_tag_t> get_tag () const;
 
+    void *get_net_buf ();
+    
+    void return_net_buf (void** net_buf);
+
     void set_remote_addr (ucp_address_t *remote_addr, size_t remote_addr_len);
 
     void set_tag (std::optional<ucp_tag_t> tag);
 
-    virtual void establish_connection () = 0;
+    virtual void establish_connection (bool warmup=false) = 0;
 
-    virtual void send (void *buf, size_t buflen) = 0;
+    virtual ucs_status_ptr_t send (void *buf, size_t buflen) = 0;
 
-    virtual void recv (void **buf, size_t *buflen) = 0;
+    virtual ucs_status_ptr_t recv (void **buf, size_t *buflen) = 0;
+    
+    virtual void comm_wait (ucs_status_ptr_t stat_ptr) = 0;
 
-    virtual void close_connection () = 0;
+    virtual void close_connection (bool warmup=false) = 0;
 
     void shutdown ();
 
@@ -89,6 +97,13 @@ class AbstractBackend
     virtual void set_worker_params (ucp_worker_params_t *params) = 0;
 
     virtual void generate_tag (CommMode mode) = 0;
+    
+    // OPTIMIZATION 2:
+    // Perform a tiny warmup communication with ourself to prevent extra hidden initialization costs from
+    // UCX from impacting our data transfers
+#if OPTIMIZATION_2
+    void warmup(const char* region_name);
+#endif
 
     bool m_initialized;
 
@@ -103,6 +118,12 @@ class AbstractBackend
     size_t m_remote_addr_size;
 
     std::optional<ucp_tag_t> m_tag;
+
+#if OPTIMIZATION_1
+    void *m_net_buf;
+    ucp_mem_h m_map;
+#endif
+    size_t m_data_size;
 };
 
 #endif /* DYAD_UCX_PERFTEST_ABSTRACT_BACKEND_HPP */

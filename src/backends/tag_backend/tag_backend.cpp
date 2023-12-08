@@ -30,17 +30,21 @@ void recv_callback (void *request, ucs_status_t status, const ucp_tag_recv_info_
     real_request->completed = 1;
 }
 
-TagBackend::TagBackend (AbstractBackend::CommMode mode) : AbstractBackend (mode)
+TagBackend::TagBackend (AbstractBackend::CommMode mode, size_t data_size) : AbstractBackend (mode, data_size)
 {
 }
 
-void TagBackend::establish_connection ()
+void TagBackend::establish_connection (bool warmup)
 {
     DYAD_PERFTEST_INFO ("Establishing connection with other UCX endpoint\n", "");
     cali::Function establish_connection_region("TagBackend::establish_connection");
     ucp_ep_params_t params;
     ucs_status_t status = UCS_OK;
+#if OPTIMIZATION_2
+    if (warmup || m_mode == SEND) {
+#else
     if (m_mode == SEND) {
+#endif
         params.field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS | UCP_EP_PARAM_FIELD_ERR_HANDLING_MODE
                             | UCP_EP_PARAM_FIELD_ERR_HANDLER;
         params.address = m_remote_addr;
@@ -63,7 +67,7 @@ void TagBackend::establish_connection ()
     }
 }
 
-void TagBackend::send (void *buf, size_t buflen)
+ucs_status_ptr_t TagBackend::send (void *buf, size_t buflen)
 {
     DYAD_PERFTEST_INFO ("Sending {} bytes of data using UCX Tag Send\n", buflen);
     cali::Function send_region("TagBackend::send");
@@ -77,16 +81,15 @@ void TagBackend::send (void *buf, size_t buflen)
         throw std::runtime_error ("Tag not set prior to invoking send!");
     }
     ucp_request_param_t params;
-    params.op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK;
+    params.op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK |
+                          UCP_OP_ATTR_FIELD_DATATYPE;
     params.cb.send = send_callback;
+    params.datatype = ucp_dt_make_contig(1);
     stat_ptr = ucp_tag_send_nbx (m_remote_ep, buf, buflen, *m_tag, &params);
-    status = ucx_request_wait (m_worker, (ucx_request_t*)stat_ptr);
-    if (UCX_STATUS_FAIL (status)) {
-        throw UcxException (fmt::format ("UCP tag send failed (status = {})", (int)status));
-    }
+    return stat_ptr;
 }
 
-void TagBackend::recv (void **buf, size_t *buflen)
+ucs_status_ptr_t TagBackend::recv (void **buf, size_t *buflen)
 {
     DYAD_PERFTEST_INFO ("Receiving data using UCX Tag Recv", "");
     cali::Function send_region("TagBackend::recv");
@@ -110,36 +113,43 @@ void TagBackend::recv (void **buf, size_t *buflen)
         usleep (10);
     } while (msg == nullptr);
     CALI_MARK_END ("ucp_tag_probe");
-    CALI_MARK_BEGIN ("recv_buffer_alloc");
+    // CALI_MARK_BEGIN ("recv_buffer_alloc");
     *buflen = msg_info.length;
-    *buf = malloc (*buflen);
-    CALI_MARK_END ("recv_buffer_alloc");
+    // *buf = malloc (*buflen);
+    // CALI_MARK_END ("recv_buffer_alloc");
     if (*buf == nullptr) {
         throw std::runtime_error ("Could not allocate memory for buffer");
     }
     CALI_MARK_BEGIN ("ucp_tag_msg_recv");
     ucp_request_param_t recv_params;
-    recv_params.op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK | UCP_OP_ATTR_FIELD_MEMORY_TYPE;
+    recv_params.op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK |
+                               UCP_OP_ATTR_FIELD_DATATYPE;
     recv_params.cb.recv = recv_callback;
-    recv_params.memory_type = UCS_MEMORY_TYPE_HOST;
+    recv_params.datatype = ucp_dt_make_contig(1);
     stat_ptr = ucp_tag_msg_recv_nbx (m_worker, *buf, *buflen, msg, &recv_params);
-    status = ucx_request_wait (m_worker, (ucx_request_t*) stat_ptr);
     CALI_MARK_END ("ucp_tag_msg_recv");
-    if (UCX_STATUS_FAIL (status)) {
-        free (*buf);
-        *buf = NULL;
-        throw UcxException (fmt::format ("UCX recv failed (status = {})", (int)status));
-    }
-    DYAD_PERFTEST_INFO ("Received {} bytes data using UCX Tag Recv", *buflen);
+    return stat_ptr;
 }
 
-void TagBackend::close_connection ()
+void TagBackend::comm_wait (ucs_status_ptr_t stat_ptr)
+{
+    ucs_status_t status = ucx_request_wait (m_worker, (ucx_request_t*)stat_ptr);
+    if (UCX_STATUS_FAIL (status)) {
+        throw UcxException (fmt::format ("UCP tag communication failed (status = {})", (int)status));
+    }
+}
+
+void TagBackend::close_connection (bool warmup)
 {
     DYAD_PERFTEST_INFO ("Closing UCX connection", "");
     cali::Function close_connection_region("TagBackend::close_connection");
     ucs_status_t status = UCS_OK;
     ucs_status_ptr_t stat_ptr;
+#if OPTIMIZATION_2
+    if (warmup || m_mode == SEND) {
+#else
     if (m_mode == SEND) {
+#endif
         if (m_remote_ep != NULL) {
             ucp_request_param_t close_params;
             close_params.op_attr_mask = UCP_OP_ATTR_FIELD_FLAGS;
@@ -162,14 +172,16 @@ void TagBackend::close_connection ()
             }
             m_remote_ep = nullptr;
         }
+#if OPTIMIZATION_2
+        if ((!warmup || m_mode != RECV) && m_remote_addr != nullptr) {
+#else
         if (m_remote_addr != nullptr) {
+#endif
             free (m_remote_addr);
             m_remote_addr = nullptr;
             m_remote_addr_size = 0;
         }
-        m_tag = std::nullopt;
     } else if (m_mode == RECV) {
-        m_tag = std::nullopt;
     } else {
         throw std::runtime_error ("Somehow, an invalid comm mode reached 'close_connection'");
     }
@@ -194,12 +206,7 @@ void TagBackend::set_worker_params (ucp_worker_params_t *params)
 void TagBackend::generate_tag (CommMode mode)
 {
     if (mode == RECV) {
-        do {
-            std::random_device rd;
-            std::mt19937_64 rand_eng (rd ());
-            std::uniform_int_distribution<ucp_tag_t> dist (0, DYAD_UCX_TAG_MASK);
-            m_tag = dist (rand_eng);
-        } while (*m_tag == 0);
+        m_tag = 123241;
     } else {
         m_tag = std::nullopt;
     }
