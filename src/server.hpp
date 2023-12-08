@@ -3,7 +3,6 @@
 
 #include "abstract_backend.hpp"
 #include "oob_comm.hpp"
-#include <caliper/cali-manager.h>
 
 class Server
 {
@@ -12,8 +11,7 @@ class Server
             const std::string& tcp_addr,
             int port,
             size_t num_connections,
-            AbstractBackend* backend,
-            cali::ConfigManager& mgr);
+            AbstractBackend* backend);
 
     ~Server ();
 
@@ -39,7 +37,6 @@ class Server
     void* m_data_buf;
     OOBComm* m_oob_comm;
     AbstractBackend* m_backend;
-    cali::ConfigManager& m_mgr;
 };
 
 #endif /* DYAD_UCX_PERFTEST_SERVER_HPP */

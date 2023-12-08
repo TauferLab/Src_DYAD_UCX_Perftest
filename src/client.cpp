@@ -14,14 +14,12 @@ Client::Client (int rank,
                 size_t data_size,
                 const std::string& tcp_addr,
                 int port,
-                AbstractBackend* backend,
-                cali::ConfigManager& mgr)
+                AbstractBackend* backend)
     : m_rank (rank),
       m_num_iters (num_iters),
       m_data_size (data_size),
       m_oob_comm (nullptr),
-      m_backend (backend),
-      m_mgr (mgr)
+      m_backend (backend)
 {
     m_oob_comm = new OOBComm (OOBComm::CLIENT, tcp_addr, port, port+1);
 }
@@ -59,6 +57,7 @@ void Client::run ()
     }
     CALI_CXX_MARK_LOOP_END (client_run_loop_id);
     nlohmann::json shutdown_msg;
+    shutdown_msg["rank"] = m_rank;
     shutdown_msg["msg_type"] = 2;
     m_oob_comm->send (shutdown_msg);
 }

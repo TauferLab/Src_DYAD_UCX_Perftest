@@ -1,4 +1,3 @@
-#include <caliper/cali-manager.h>
 #include <caliper/cali.h>
 #include <fmt/format.h>
 
@@ -22,7 +21,6 @@ int main (int argc, char** argv)
     MPI_Init (&argc, &argv);
     int rank;
     MPI_Comm_rank (MPI_COMM_WORLD, &rank);
-    cali::ConfigManager mgr;
     CALI_CXX_MARK_FUNCTION;
     std::string tcp_addr;
     size_t data_size;
@@ -50,7 +48,7 @@ int main (int argc, char** argv)
             throw std::runtime_error ("Invalid backend mode");
     }
     backend->init ();
-    Client* client = new Client (rank, num_iters, data_size, tcp_addr, port, backend, mgr);
+    Client* client = new Client (rank, num_iters, data_size, tcp_addr, port, backend);
     try {
         client->start ();
         client->run ();

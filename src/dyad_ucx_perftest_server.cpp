@@ -1,4 +1,3 @@
-#include <caliper/cali-manager.h>
 #include <caliper/cali.h>
 #include <fmt/format.h>
 
@@ -17,7 +16,6 @@ enum class Mode : int {
 
 int main (int argc, char** argv)
 {
-    cali::ConfigManager mgr;
     CALI_CXX_MARK_FUNCTION;
     std::string tcp_addr;
     size_t data_size;
@@ -44,7 +42,7 @@ int main (int argc, char** argv)
             throw std::runtime_error ("Invalid backend mode");
     }
     backend->init ();
-    Server* serv = new Server (data_size, tcp_addr, port, num_connections, backend, mgr);
+    Server* serv = new Server (data_size, tcp_addr, port, num_connections, backend);
     try {
         serv->start ();
         serv->run ();

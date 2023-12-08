@@ -3,7 +3,6 @@
 
 #include "abstract_backend.hpp"
 #include "oob_comm.hpp"
-#include <caliper/cali-manager.h>
 
 class Client
 {
@@ -13,8 +12,7 @@ class Client
             size_t data_size,
             const std::string& tcp_addr,
             int port,
-            AbstractBackend* backend,
-            cali::ConfigManager& mgr);
+            AbstractBackend* backend);
 
     ~Client ();
 
@@ -32,7 +30,6 @@ class Client
     size_t m_data_size;
     OOBComm* m_oob_comm;
     AbstractBackend* m_backend;
-    cali::ConfigManager& m_mgr;
 };
 
 #endif /* DYAD_UCX_PERFTEST_CLIENT_HPP */

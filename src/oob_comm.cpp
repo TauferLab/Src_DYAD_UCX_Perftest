@@ -16,7 +16,7 @@ OOBComm::OOBComm (Mode mode, const std::string& tcp_addr, int data_port, int con
       m_data_sock (NULL),
       m_connection_sock (NULL)
 {
-    DYAD_PERFTEST_INFO ("Starting OOB communication on {}", tcp_addr_and_port);
+    DYAD_PERFTEST_INFO ("Starting OOB communication on {}", tcp_addr);
     cali::Function oob_init_region ("OOBComm::init_zmq");
     std::string full_addr_connection = fmt::format ("tcp://{}:{}", tcp_addr, connection_port);
     std::string full_addr_data = fmt::format ("tcp://{}:{}", tcp_addr, data_port);

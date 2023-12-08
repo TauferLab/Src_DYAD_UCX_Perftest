@@ -15,8 +15,7 @@ Server::Server (size_t data_size,
                 const std::string& tcp_addr,
                 int port,
                 size_t num_connections,
-                AbstractBackend* backend,
-                cali::ConfigManager& mgr)
+                AbstractBackend* backend)
     : m_num_expected_connections (num_connections),
       m_connections_active (num_connections, false),
       m_all_active (false),
@@ -24,8 +23,7 @@ Server::Server (size_t data_size,
       m_data_size (data_size),
       m_data_buf (nullptr),
       m_oob_comm (nullptr),
-      m_backend (backend),
-      m_mgr (mgr)
+      m_backend (backend)
 {
     if (m_num_expected_connections == 0) {
         throw std::runtime_error ("Server configured with 0 expected connections");
