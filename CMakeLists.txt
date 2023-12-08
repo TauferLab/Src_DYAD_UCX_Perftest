@@ -15,6 +15,7 @@ endif (ENABLE_LOG)
 set(CMAKE_CXX_STANDARD 17 CACHE STRING "")
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+find_package(MPI REQUIRED)
 find_package(ucx REQUIRED)
 find_package(caliper REQUIRED)
 find_package(adiak REQUIRED)

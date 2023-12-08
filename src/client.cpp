@@ -9,13 +9,15 @@
 
 extern const base64_maps_t base64_maps_rfc4648;
 
-Client::Client (unsigned long int num_iters,
+Client::Client (int rank,
+                unsigned long int num_iters,
                 size_t data_size,
                 const std::string& tcp_addr,
                 int port,
                 AbstractBackend* backend,
                 cali::ConfigManager& mgr)
-    : m_num_iters (num_iters),
+    : m_rank (rank),
+      m_num_iters (num_iters),
       m_data_size (data_size),
       m_oob_comm (nullptr),
       m_backend (backend),
@@ -34,6 +36,7 @@ void Client::start ()
 {
     cali::Function start_region ("Client::start");
     nlohmann::json msg;
+    msg["rank"] = m_rank;
     msg["msg_type"] = 0;
     m_oob_comm->send (msg);
     nlohmann::json response = m_oob_comm->recv ();
@@ -71,6 +74,7 @@ void Client::single_run (ucp_tag_t tag, const char* region_name)
 {
     cali::ScopeAnnotation single_run_region (region_name);
     nlohmann::json msg;
+    msg["rank"] = m_rank;
     msg["msg_type"] = 1;
     msg["tag"] = tag;
     DYAD_PERFTEST_INFO ("Message type is {}", msg.at ("msg_type").get<int> ());

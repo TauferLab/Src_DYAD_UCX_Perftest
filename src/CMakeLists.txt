@@ -22,7 +22,7 @@ target_include_directories(perftest PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_C
 add_executable(dyad_ucx_perftest_server dyad_ucx_perftest_server.cpp)
 target_link_libraries(dyad_ucx_perftest_server perftest caliper adiak::adiak)
 add_executable(dyad_ucx_perftest_client dyad_ucx_perftest_client.cpp)
-target_link_libraries(dyad_ucx_perftest_client perftest caliper adiak::adiak)
+target_link_libraries(dyad_ucx_perftest_client perftest caliper adiak::adiak MPI::MPI_C)
 
 install(
     TARGETS dyad_ucx_perftest_server dyad_ucx_perftest_client

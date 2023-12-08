@@ -8,7 +8,8 @@
 class Client
 {
    public:
-    Client (unsigned long int num_iters,
+    Client (int rank,
+            unsigned long int num_iters,
             size_t data_size,
             const std::string& tcp_addr,
             int port,
@@ -26,6 +27,7 @@ class Client
    private:
     void single_run(ucp_tag_t tag, const char* region_name);
 
+    int m_rank;
     unsigned long int m_num_iters;
     size_t m_data_size;
     OOBComm* m_oob_comm;
