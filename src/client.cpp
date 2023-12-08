@@ -11,7 +11,8 @@ extern const base64_maps_t base64_maps_rfc4648;
 
 Client::Client (unsigned long int num_iters,
                 size_t data_size,
-                const std::string& tcp_addr_and_port,
+                const std::string& tcp_addr,
+                int port,
                 AbstractBackend* backend,
                 cali::ConfigManager& mgr)
     : m_num_iters (num_iters),
@@ -20,7 +21,7 @@ Client::Client (unsigned long int num_iters,
       m_backend (backend),
       m_mgr (mgr)
 {
-    m_oob_comm = new OOBComm (OOBComm::CLIENT, tcp_addr_and_port);
+    m_oob_comm = new OOBComm (OOBComm::CLIENT, tcp_addr, port, port+1);
 }
 
 Client::~Client ()
@@ -38,6 +39,7 @@ void Client::start ()
     nlohmann::json response = m_oob_comm->recv ();
     if (!response.at ("ok").get<bool> ())
         throw std::runtime_error ("Did not get a valid response from server");
+    m_oob_comm->recv_run_start ();
 }
 
 void Client::run ()

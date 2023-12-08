@@ -10,7 +10,8 @@ class Client
    public:
     Client (unsigned long int num_iters,
             size_t data_size,
-            const std::string& tcp_addr_and_port,
+            const std::string& tcp_addr,
+            int port,
             AbstractBackend* backend,
             cali::ConfigManager& mgr);
 

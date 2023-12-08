@@ -7,20 +7,30 @@
 #include "base64.h"
 #include "utils.h"
 #include <ctime>
+#include <algorithm>
 
 extern const base64_maps_t base64_maps_rfc4648;
 
 Server::Server (size_t data_size,
-                const std::string& tcp_addr_and_port,
+                const std::string& tcp_addr,
+                int port,
+                size_t num_connections,
                 AbstractBackend* backend,
                 cali::ConfigManager& mgr)
-    : m_data_size (data_size),
+    : m_num_expected_connections (num_connections),
+      m_connections_active (num_connections, false),
+      m_all_active (false),
+      m_all_unactive (true),
+      m_data_size (data_size),
       m_data_buf (nullptr),
       m_oob_comm (nullptr),
       m_backend (backend),
       m_mgr (mgr)
 {
-    m_oob_comm = new OOBComm (OOBComm::SERVER, tcp_addr_and_port);
+    if (m_num_expected_connections == 0) {
+        throw std::runtime_error ("Server configured with 0 expected connections");
+    }
+    m_oob_comm = new OOBComm (OOBComm::SERVER, tcp_addr, port, port+1);
 }
 
 Server::~Server ()
@@ -41,26 +51,38 @@ void Server::gen_data ()
 void Server::start ()
 {
     cali::Function server_start_region ("Server::start");
-    nlohmann::json msg = m_oob_comm->recv ();
-    int msg_type = msg.at ("msg_type").get<int> ();
-    if (msg_type != 0)
-        throw std::runtime_error ("Received invalid starting message from client");
-    nlohmann::json resp;
-    resp["ok"] = true;
-    m_oob_comm->send (resp);
+    do {
+        nlohmann::json msg = m_oob_comm->recv ();
+        int client_rank = msg.at ("rank").get<int> ();
+        int msg_type = msg.at ("msg_type").get<int> ();
+        if (msg_type != 0)
+            throw std::runtime_error ("Received invalid starting message from client");
+        m_connections_active.at(client_rank) = true;
+        nlohmann::json resp;
+        resp["ok"] = true;
+        m_oob_comm->send (resp);
+        check_active_connections ();
+    } while (!m_all_active);
+    m_oob_comm->send_run_start ();
+}
+
+void Server::check_active_connections ()
+{
+    m_all_active = std::all_of(m_connections_active.begin(), m_connections_active.end(), [](bool v){ return v; });
+    m_all_unactive = std::none_of(m_connections_active.begin(), m_connections_active.end(), [](bool v){ return v; });
 }
 
 void Server::run ()
 {
     cali::Function server_run_region ("Server::run");
-    int msg_type = 0;
     int loop_id = 0;
     CALI_CXX_MARK_LOOP_BEGIN (server_run_loop_id, "server_run_loop");
     do {
         CALI_CXX_MARK_LOOP_ITERATION (server_run_loop_id, loop_id);
-        single_run (msg_type, "Server::single_run");
+        single_run ("Server::single_run");
+        check_active_connections ();
         loop_id += 1;
-    } while (msg_type != 2);
+    } while (!m_all_unactive);
     CALI_CXX_MARK_LOOP_END (server_run_loop_id);
     DYAD_PERFTEST_INFO ("Server is done running", "");
 }
@@ -72,11 +94,16 @@ static double ts_diff(struct timespec* t1, struct timespec* t0)
       + (t1->tv_nsec - t0->tv_nsec) / 1000000000.0;
 }
 
-void Server::single_run (int& msg_type, const char* region_name)
+void Server::single_run (const char* region_name)
 {
     cali::ScopeAnnotation single_run_region (region_name);
     nlohmann::json msg = m_oob_comm->recv ();
-    msg_type = msg.at ("msg_type").get<int> ();
+    nlohmann::json resp;
+    int client_rank = msg.at ("rank").get<int> ();
+    if (!m_connections_active.at(client_rank)) {
+        throw std::runtime_error ("Received an extra message from a closed client connection");
+    }
+    int msg_type = msg.at ("msg_type").get<int> ();
     DYAD_PERFTEST_INFO ("Message type is {}", msg_type);
     if (msg_type == 1) {
         std::optional<ucp_tag_t> tag = msg.at ("tag").get<ucp_tag_t> ();
@@ -112,10 +139,14 @@ void Server::single_run (int& msg_type, const char* region_name)
         CALI_MARK_END ("full_backend_send");
         m_backend->close_connection ();
         m_backend->return_net_buf (&m_data_buf);
-        nlohmann::json resp;
         resp["iter_ok"] = true;
-        m_oob_comm->send (resp);
+    } else if (msg_type == 2) {
+        m_connections_active.at(client_rank) = false;
+        resp["disconnect_ok"] = true;
+    } else {
+        throw std::runtime_error ("Invalid message type");
     }
+    m_oob_comm->send (resp);
 }
 
 void Server::shutdown ()

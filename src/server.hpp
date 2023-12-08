@@ -9,7 +9,9 @@ class Server
 {
    public:
     Server (size_t data_size,
-            const std::string& tcp_addr_and_port,
+            const std::string& tcp_addr,
+            int port,
+            size_t num_connections,
             AbstractBackend* backend,
             cali::ConfigManager& mgr);
 
@@ -22,9 +24,16 @@ class Server
     void shutdown ();
 
    private:
-    void single_run(int& msg_type, const char* region_name);
+    void single_run(const char* region_name);
 
     void gen_data ();
+    
+    void check_active_connections ();
+    
+    size_t m_num_expected_connections;
+    std::vector<bool> m_connections_active;
+    bool m_all_active;
+    bool m_all_unactive;
 
     size_t m_data_size;
     void* m_data_buf;
