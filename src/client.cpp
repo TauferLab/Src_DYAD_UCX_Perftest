@@ -6,6 +6,7 @@
 #include "base64.h"
 #include "utils.h"
 #include <ctime>
+#include <mpi.h>
 
 extern const base64_maps_t base64_maps_rfc4648;
 
@@ -21,7 +22,7 @@ Client::Client (int rank,
       m_oob_comm (nullptr),
       m_backend (backend)
 {
-    m_oob_comm = new OOBComm (OOBComm::CLIENT, tcp_addr, port, port+1);
+    m_oob_comm = new OOBComm (OOBComm::CLIENT, tcp_addr, port);
 }
 
 Client::~Client ()
@@ -40,20 +41,18 @@ void Client::start ()
     nlohmann::json response = m_oob_comm->recv ();
     if (!response.at ("ok").get<bool> ())
         throw std::runtime_error ("Did not get a valid response from server");
-    m_oob_comm->recv_run_start ();
+    MPI_Barrier (MPI_COMM_WORLD);
 }
 
 void Client::run ()
 {
     cali::Function run_region ("Client::run");
-    std::optional<ucp_tag_t> tag = m_backend->get_tag ();
-    if (!tag) {
-        throw std::runtime_error ("Tag not found");
-    }
+    ucp_tag_t tag = m_backend->get_tag ();
     CALI_CXX_MARK_LOOP_BEGIN (client_run_loop_id, "client_run_loop");
     for (unsigned long int i = 0; i < m_num_iters; i++) {
         CALI_CXX_MARK_LOOP_ITERATION (client_run_loop_id, i);
-        single_run (*tag, "Client::single_run");
+        DYAD_PERFTEST_INFO ("Iteration {}", i);
+        single_run (tag, "Client::single_run");
     }
     CALI_CXX_MARK_LOOP_END (client_run_loop_id);
     nlohmann::json shutdown_msg;

@@ -3,7 +3,6 @@
 
 #include <ucp/api/ucp.h>
 
-#include <optional>
 #include <stdexcept>
 #include <string>
 #include <tuple>
@@ -61,7 +60,7 @@ class AbstractBackend
         NONE,
     };
 
-    AbstractBackend (CommMode mode, size_t data_size);
+    AbstractBackend (CommMode mode, size_t data_size, int rank);
 
     virtual ~AbstractBackend ();
 
@@ -69,7 +68,7 @@ class AbstractBackend
 
     std::tuple<ucp_address_t *, size_t> get_address () const;
 
-    std::optional<ucp_tag_t> get_tag () const;
+    ucp_tag_t get_tag () const;
 
     void *get_net_buf ();
     
@@ -77,7 +76,7 @@ class AbstractBackend
 
     void set_remote_addr (ucp_address_t *remote_addr, size_t remote_addr_len);
 
-    void set_tag (std::optional<ucp_tag_t> tag);
+    void set_tag (ucp_tag_t tag);
 
     virtual void establish_connection (bool warmup=false) = 0;
 
@@ -95,13 +94,11 @@ class AbstractBackend
     virtual void set_context_params (ucp_params_t *params) = 0;
 
     virtual void set_worker_params (ucp_worker_params_t *params) = 0;
-
-    virtual void generate_tag (CommMode mode) = 0;
     
     // OPTIMIZATION 2:
     // Perform a tiny warmup communication with ourself to prevent extra hidden initialization costs from
     // UCX from impacting our data transfers
-#if OPTIMIZATION_2
+#if OPT_2
     void warmup(const char* region_name);
 #endif
 
@@ -117,9 +114,9 @@ class AbstractBackend
     ucp_address_t *m_remote_addr;
     size_t m_remote_addr_size;
 
-    std::optional<ucp_tag_t> m_tag;
+    ucp_tag_t m_tag;
 
-#if OPTIMIZATION_1
+#if OPT_1
     void *m_net_buf;
     ucp_mem_h m_map;
 #endif

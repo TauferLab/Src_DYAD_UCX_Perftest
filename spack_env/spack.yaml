@@ -10,11 +10,13 @@ spack:
   - ucx@1.13.0
   - 'cmake@3.16:'
   - libzmq
+  - mvapich2
   view: true
   concretizer:
     unify: true
-  # Specify allowed MPI providers due to a bug when using cray-mpich
   packages:
-    all:
-      providers:
-        mpi: [mpich, mvapich2, openmpi]
+    mvapich2:
+      externals:
+      - spec: mvapich2@2.3.7
+        modules:
+        - mvapich2/2.3.7

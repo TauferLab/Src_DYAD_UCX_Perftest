@@ -28,7 +28,8 @@ Server::Server (size_t data_size,
     if (m_num_expected_connections == 0) {
         throw std::runtime_error ("Server configured with 0 expected connections");
     }
-    m_oob_comm = new OOBComm (OOBComm::SERVER, tcp_addr, port, port+1);
+    DYAD_PERFTEST_INFO ("Server expects {} connections", m_num_expected_connections);
+    m_oob_comm = new OOBComm (OOBComm::SERVER, tcp_addr, port);
 }
 
 Server::~Server ()
@@ -61,7 +62,12 @@ void Server::start ()
         m_oob_comm->send (resp);
         check_active_connections ();
     } while (!m_all_active);
-    m_oob_comm->send_run_start ();
+    int num_active = 0;
+    for (bool is_act : m_connections_active) {
+        if (is_act)
+            num_active += 1;
+    }
+    DYAD_PERFTEST_INFO ("Got {} active connections", num_active);
 }
 
 void Server::check_active_connections ()
@@ -72,6 +78,7 @@ void Server::check_active_connections ()
 
 void Server::run ()
 {
+    gen_data();
     cali::Function server_run_region ("Server::run");
     int loop_id = 0;
     CALI_CXX_MARK_LOOP_BEGIN (server_run_loop_id, "server_run_loop");
@@ -82,6 +89,7 @@ void Server::run ()
         loop_id += 1;
     } while (!m_all_unactive);
     CALI_CXX_MARK_LOOP_END (server_run_loop_id);
+    m_backend->return_net_buf (&m_data_buf);
     DYAD_PERFTEST_INFO ("Server is done running", "");
 }
 
@@ -104,10 +112,8 @@ void Server::single_run (const char* region_name)
     int msg_type = msg.at ("msg_type").get<int> ();
     DYAD_PERFTEST_INFO ("Message type is {}", msg_type);
     if (msg_type == 1) {
-        std::optional<ucp_tag_t> tag = msg.at ("tag").get<ucp_tag_t> ();
-        DYAD_PERFTEST_INFO ("Tag is {}", *tag);
-        if (*tag == 0)
-            tag = std::nullopt;
+        ucp_tag_t tag = msg.at ("tag").get<ucp_tag_t> ();
+        DYAD_PERFTEST_INFO ("Tag is {}", tag);
         auto addr_element = msg.at ("addr");
         // nlohmann::json::array_t serialized_addr =
         // addr_element.at("bytes").get<nlohmann::json::array_t> ();
@@ -127,7 +133,6 @@ void Server::single_run (const char* region_name)
             free (addr);
             throw std::runtime_error ("Could not decode remote address");
         }
-        gen_data();
         m_backend->set_remote_addr (addr, addr_size);
         m_backend->set_tag (tag);
         m_backend->establish_connection ();
@@ -136,7 +141,6 @@ void Server::single_run (const char* region_name)
         m_backend->comm_wait (stat_ptr);
         CALI_MARK_END ("full_backend_send");
         m_backend->close_connection ();
-        m_backend->return_net_buf (&m_data_buf);
         resp["iter_ok"] = true;
     } else if (msg_type == 2) {
         m_connections_active.at(client_rank) = false;

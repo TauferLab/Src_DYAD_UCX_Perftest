@@ -20,7 +20,17 @@ find_package(ucx REQUIRED)
 find_package(caliper REQUIRED)
 find_package(adiak REQUIRED)
 
-include(perftest_optimizations.cmake)
+# Define options for the different optimizations
+option(OPT1 "Enable optimization 1 (UCP Memory Allocation)" OFF)
+option(OPT2 "Enable optimization 1 (UCP Memory Allocation) and 2 (warmup iteration)" OFF)
+
+# Add the necessary defines based on the values of the options
+if (OPT1)
+    add_definitions("-DOPT_1=1")
+endif (OPT1)
+if (OPT2)
+    add_definitions("-DOPT_2=1")
+endif (OPT2)
 
 add_subdirectory(extern)
 add_subdirectory(src)

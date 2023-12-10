@@ -6,7 +6,7 @@
 class TagBackend : public AbstractBackend
 {
    public:
-    TagBackend (AbstractBackend::CommMode mode, size_t data_size);
+    TagBackend (AbstractBackend::CommMode mode, size_t data_size, int rank);
 
     virtual ~TagBackend () = default;
 
@@ -24,8 +24,6 @@ class TagBackend : public AbstractBackend
     virtual void set_context_params (ucp_params_t *params) final;
 
     virtual void set_worker_params (ucp_worker_params_t *params) final;
-
-    virtual void generate_tag (CommMode mode) final;
 };
 
 #endif /* DYAD_UCX_PERFTEST_TAG_BACKEND_HPP */

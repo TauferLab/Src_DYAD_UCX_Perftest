@@ -1,4 +1,5 @@
 #include <caliper/cali.h>
+#include <adiak.hpp>
 #include <fmt/format.h>
 
 #include <CLI/CLI.hpp>
@@ -16,18 +17,44 @@ enum class Mode : int {
     NONE,
 };
 
+const std::map<std::string, Mode> mode_map{
+    {"tag", Mode::TAG},
+    {"none", Mode::NONE}
+};
+
+void set_metadata (Mode& m, size_t data_size, unsigned long num_iters)
+{
+    adiak::user ();
+    adiak::executable ();
+    adiak::executablepath ();
+    adiak::hostname ();
+    adiak::clustername ();
+    adiak::walltime ();
+    adiak::cputime ();
+    adiak::systime ();
+    adiak::jobsize ();
+    adiak::numhosts ();
+    adiak::hostlist ();
+    auto key_it = std::find_if(mode_map.begin(), mode_map.end(), [&m](const auto& elem) { return elem.second == m; });
+    if (key_it == mode_map.end())
+        throw std::runtime_error("Invalid mode");
+    adiak::value ("mode", key_it->first);
+    adiak::value ("data_size", data_size);
+    adiak::value ("num_iters", num_iters);
+}
+
 int main (int argc, char** argv)
 {
     MPI_Init (&argc, &argv);
     int rank;
     MPI_Comm_rank (MPI_COMM_WORLD, &rank);
-    CALI_CXX_MARK_FUNCTION;
+    MPI_Comm world_comm = MPI_COMM_WORLD;
+    adiak::init (&world_comm);
     std::string tcp_addr;
     size_t data_size;
     unsigned long num_iters = 1;
     int port = 8888;
     Mode mode = Mode::TAG;
-    std::map<std::string, Mode> mode_map{{"tag", Mode::TAG}, {"none", Mode::NONE}};
     CLI::App app;
     app.add_option ("mode", mode, "UCX backend mode to use")
         ->required ()
@@ -39,10 +66,13 @@ int main (int argc, char** argv)
     app.add_option ("--port,-p", port, "TCP port for the server")
         ->capture_default_str();
     CLI11_PARSE (app, argc, argv);
+    set_metadata (mode, data_size, num_iters);
+    // Start Caliper annotations
+    CALI_MARK_BEGIN ("main");
     AbstractBackend* backend;
     switch (mode) {
         case Mode::TAG:
-            backend = new TagBackend (AbstractBackend::RECV, data_size);
+            backend = new TagBackend (AbstractBackend::RECV, data_size, rank);
             break;
         default:
             throw std::runtime_error ("Invalid backend mode");
@@ -62,6 +92,9 @@ int main (int argc, char** argv)
     }
     delete client;
     delete backend;
+    // End Caliper annotations
+    CALI_MARK_END ("main");
+    adiak::fini ();
     MPI_Finalize ();
     return 0;
 }

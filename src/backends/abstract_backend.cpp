@@ -1,9 +1,13 @@
 #include "abstract_backend.hpp"
 
+#include "utils.h"
+
 #include <fmt/format.h>
 
 #include <caliper/cali.h>
 #include <caliper/Annotation.h>
+
+#include <cassert>
 
 extern "C" {
     void ucx_request_init (void *request)
@@ -38,7 +42,7 @@ dtl_ucx_request_wait_region_finish:
     }
 }
 
-AbstractBackend::AbstractBackend (AbstractBackend::CommMode mode, size_t data_size)
+AbstractBackend::AbstractBackend (AbstractBackend::CommMode mode, size_t data_size, int rank)
     : m_initialized (false),
       m_ctx (nullptr),
       m_worker (nullptr),
@@ -48,7 +52,7 @@ AbstractBackend::AbstractBackend (AbstractBackend::CommMode mode, size_t data_si
       m_local_addr_size (0),
       m_remote_addr (nullptr),
       m_remote_addr_size (0),
-      m_tag (std::nullopt),
+      m_tag (rank),
       m_data_size(data_size)
 {
 }
@@ -104,11 +108,11 @@ void AbstractBackend::init ()
     }
     m_local_addr = worker_attrs.address;
     m_local_addr_size = worker_attrs.address_length;
-    generate_tag (m_mode);
     
     // OPTIMIZATION 1:
     // Allocate a single buffer of max transfer size, and reuse it for communications
-#if OPTIMIZATION_1
+#if OPT_1
+    DYAD_PERFTEST_INFO ("Allocating memory buffer for optimization 1", "");
     ucp_mem_map_params_t mmap_params;
     mmap_params.field_mask = UCP_MEM_MAP_PARAM_FIELD_ADDRESS |
                             UCP_MEM_MAP_PARAM_FIELD_LENGTH |
@@ -141,7 +145,8 @@ void AbstractBackend::init ()
     // OPTIMIZATION 2:
     // Perform a tiny warmup communication with ourself to prevent extra hidden initialization costs from
     // UCX from impacting our data transfers
-#if OPTIMIZATION_2
+#if OPT_2
+    DYAD_PERFTEST_INFO ("Running warmup communication", "");
     warmup ("Backend::warmup");
 #endif
 }
@@ -155,7 +160,7 @@ std::tuple<ucp_address_t *, size_t> AbstractBackend::get_address () const
     return std::make_tuple (m_local_addr, m_local_addr_size);
 }
 
-std::optional<ucp_tag_t> AbstractBackend::get_tag () const
+ucp_tag_t AbstractBackend::get_tag () const
 {
     return m_tag;
 }
@@ -164,7 +169,8 @@ void* AbstractBackend::get_net_buf ()
 {
     // OPTIMIZATION 1:
     // Use the globally allocated buffer from init
-#if OPTIMIZATION_1
+    cali::Function get_buf_region ("Backend::get_net_buf");
+#if OPT_1
     return m_net_buf;
 #else
     void* net_buf = malloc(m_data_size);
@@ -176,7 +182,8 @@ void AbstractBackend::return_net_buf(void** net_buf)
 {
     // OPTIMIZATION 1:
     // Use the globally allocated buffer from init
-#if OPTIMIZATION_1
+    cali::Function ret_buf_region ("Backend::return_net_buf");
+#if OPT_1
     return;
 #else
     if (net_buf == NULL || *net_buf == NULL)
@@ -193,7 +200,7 @@ void AbstractBackend::set_remote_addr (ucp_address_t *remote_addr, size_t remote
     }
 }
 
-void AbstractBackend::set_tag (std::optional<ucp_tag_t> tag)
+void AbstractBackend::set_tag (ucp_tag_t tag)
 {
     m_tag = tag;
 }
@@ -208,7 +215,7 @@ void AbstractBackend::shutdown ()
         }
         // OPTIMIZATION 1:
         // Persistant buffer needs to be deallocated using ucp_mem_unmap
-#if OPTIMIZATION_1
+#if OPT_1
         if (m_net_buf != nullptr) {
             ucp_mem_unmap (m_ctx, m_map);
             m_net_buf = nullptr;
@@ -231,7 +238,6 @@ void AbstractBackend::shutdown ()
             ucp_cleanup (m_ctx);
             m_ctx = nullptr;
         }
-        m_tag = std::nullopt;
         m_initialized = false;
     }
 }
@@ -239,7 +245,7 @@ void AbstractBackend::shutdown ()
 // OPTIMIZATION 2:
 // Perform a tiny warmup communication with ourself to prevent extra hidden initialization costs from
 // UCX from impacting our data transfers
-#if OPTIMIZATION_2
+#if OPT_2
 void AbstractBackend::warmup (const char* region_name)
 {
     cali::Function warmup_function (region_name);
@@ -247,7 +253,7 @@ void AbstractBackend::warmup (const char* region_name)
     void* recv_buf = malloc (1);
     size_t recv_size = 0;
     std::tuple<ucp_address_t*, size_t> addr_info = get_address ();
-    set_remote_address (std::get<0>(addr_info), std::get<1>(addr_info));
+    set_remote_addr (std::get<0>(addr_info), std::get<1>(addr_info));
     establish_connection (true);
     ucs_status_ptr_t send_stat_ptr = send (data_buf, 1);
     ucs_status_ptr_t recv_stat_ptr = recv (&recv_buf, &recv_size);

@@ -30,7 +30,7 @@ void recv_callback (void *request, ucs_status_t status, const ucp_tag_recv_info_
     real_request->completed = 1;
 }
 
-TagBackend::TagBackend (AbstractBackend::CommMode mode, size_t data_size) : AbstractBackend (mode, data_size)
+TagBackend::TagBackend (AbstractBackend::CommMode mode, size_t data_size, int rank) : AbstractBackend (mode, data_size, rank)
 {
 }
 
@@ -40,7 +40,7 @@ void TagBackend::establish_connection (bool warmup)
     cali::Function establish_connection_region("TagBackend::establish_connection");
     ucp_ep_params_t params;
     ucs_status_t status = UCS_OK;
-#if OPTIMIZATION_2
+#if OPT_2
     if (warmup || m_mode == SEND) {
 #else
     if (m_mode == SEND) {
@@ -69,7 +69,7 @@ void TagBackend::establish_connection (bool warmup)
 
 ucs_status_ptr_t TagBackend::send (void *buf, size_t buflen)
 {
-    DYAD_PERFTEST_INFO ("Sending {} bytes of data using UCX Tag Send\n", buflen);
+    DYAD_PERFTEST_INFO ("Sending {} bytes of data using UCX Tag Send", buflen);
     cali::Function send_region("TagBackend::send");
     ucs_status_ptr_t stat_ptr;
     ucs_status_t status = UCS_OK;
@@ -77,15 +77,13 @@ ucs_status_ptr_t TagBackend::send (void *buf, size_t buflen)
     if (m_remote_ep == nullptr) {
         throw UcxException ("UCP endpoint was not created prior to invoking send!");
     }
-    if (!m_tag) {
-        throw std::runtime_error ("Tag not set prior to invoking send!");
-    }
+    DYAD_PERFTEST_INFO ("Tag prior to send is {}", m_tag);
     ucp_request_param_t params;
     params.op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK |
                           UCP_OP_ATTR_FIELD_DATATYPE;
     params.cb.send = send_callback;
     params.datatype = ucp_dt_make_contig(1);
-    stat_ptr = ucp_tag_send_nbx (m_remote_ep, buf, buflen, *m_tag, &params);
+    stat_ptr = ucp_tag_send_nbx (m_remote_ep, buf, buflen, m_tag, &params);
     return stat_ptr;
 }
 
@@ -97,14 +95,12 @@ ucs_status_ptr_t TagBackend::recv (void **buf, size_t *buflen)
     ucp_tag_message_h msg = NULL;
     ucp_tag_recv_info_t msg_info;
     ucs_status_ptr_t stat_ptr = NULL;
-    if (!m_tag) {
-        throw std::runtime_error ("Tag not set prior to invoking recv!");
-    }
+    DYAD_PERFTEST_INFO ("Tag prior to recv is {}", m_tag);
     CALI_MARK_BEGIN ("ucp_tag_probe");
     do {
         ucp_worker_progress (m_worker);
         msg = ucp_tag_probe_nb (m_worker,
-                                *m_tag,
+                                m_tag,
                                 DYAD_UCX_TAG_MASK,
                                 1,  // Remove the message from UCP tracking
                                 // Requires calling ucp_tag_msg_recv_nb
@@ -145,7 +141,7 @@ void TagBackend::close_connection (bool warmup)
     cali::Function close_connection_region("TagBackend::close_connection");
     ucs_status_t status = UCS_OK;
     ucs_status_ptr_t stat_ptr;
-#if OPTIMIZATION_2
+#if OPT_2
     if (warmup || m_mode == SEND) {
 #else
     if (m_mode == SEND) {
@@ -172,7 +168,7 @@ void TagBackend::close_connection (bool warmup)
             }
             m_remote_ep = nullptr;
         }
-#if OPTIMIZATION_2
+#if OPT_2
         if ((!warmup || m_mode != RECV) && m_remote_addr != nullptr) {
 #else
         if (m_remote_addr != nullptr) {
@@ -201,13 +197,4 @@ void TagBackend::set_worker_params (ucp_worker_params_t *params)
     params->field_mask = UCP_WORKER_PARAM_FIELD_THREAD_MODE | UCP_WORKER_PARAM_FIELD_EVENTS;
     params->thread_mode = UCS_THREAD_MODE_SINGLE;
     params->events = UCP_WAKEUP_TAG_RECV;
-}
-
-void TagBackend::generate_tag (CommMode mode)
-{
-    if (mode == RECV) {
-        m_tag = 123241;
-    } else {
-        m_tag = std::nullopt;
-    }
 }
